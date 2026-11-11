@@ -67,7 +67,8 @@ def main() -> int:
     check("bad login -> 401", call("POST", "/login", {"username": user, "password": "nope"})[0] == 401)
     check("production-style docs hidden or staging-only", call("GET", "/nope")[0] == 404)
 
-    cid = docker("compose", "ps", "-q", "api")
+    # Find the container by its Compose label (works with `docker compose` and `docker-compose`).
+    cid = docker("ps", "-q", "--filter", "label=com.docker.compose.service=api").splitlines()[0]
     uid = docker("exec", cid, "id", "-u")
     check("container runs as non-root", uid != "0", f"(uid={uid})")
     check("image config user is set", docker("inspect", "-f", "{{.Config.User}}", cid) not in ("", "0", "root"))

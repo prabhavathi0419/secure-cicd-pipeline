@@ -14,6 +14,9 @@ Everything here was built from scratch for learning; nothing is copied from anot
                                                           └─► pipeline blocked
 ```
 
+## Verified results
+See `docs/RESULTS.md`: 51 tests, 0 blocking findings, gate PASS, staging 16/16 checks.
+
 ## Repository map
 | Path | Purpose |
 |---|---|
@@ -42,7 +45,7 @@ Run the API locally:
 $env:APP_ENV="development"; $env:APP_SECRET_KEY=[guid]::NewGuid().ToString("N")+[guid]::NewGuid().ToString("N")
 .\.venv\Scripts\uvicorn app.main:app --port 8000      # docs at http://127.0.0.1:8000/docs
 ```
-Local staging (needs Docker):
+Local staging (needs Docker Desktop; on machines where only the standalone `docker-compose.exe` is available use `docker-compose` instead of `docker compose`):
 ```powershell
 docker build -t secure-cicd-demo:local .
 $env:APP_SECRET_KEY=[guid]::NewGuid().ToString("N")+[guid]::NewGuid().ToString("N")

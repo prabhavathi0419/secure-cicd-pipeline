@@ -6,7 +6,7 @@
    gh repo create secure-cicd-pipeline --private --source . --remote origin --push
    ```
    (Use your GitHub **noreply** address for commits if you make it public: Settings > Emails.)
-3. Edit `.github/CODEOWNERS` - replace `@YOUR-GITHUB-USERNAME`.
+3. `.github/CODEOWNERS` already points to `@prabha0419` - change it if the repo owner differs.
 4. **Branch protection for `main`** (Settings > Branches > Add rule, or Rulesets):
    * Require a pull request before merging (+ "Require review from Code Owners")
    * Require status checks: `Unit & security tests`, `Secrets detection (Gitleaks)`, `SAST (Bandit + Semgrep)`, `SCA (pip-audit + Trivy fs)`, `Build, scan image, SBOM`, `Security gate`
