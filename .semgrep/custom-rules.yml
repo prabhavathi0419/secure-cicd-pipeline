@@ -36,5 +36,5 @@ rules:
       - pattern: $NAME = "..."
       - metavariable-regex:
           metavariable: $NAME
-          regex: (?i).*(password|passwd|secret|api_key|apikey|token).*
+          regex: (?i)^(.*_)?(password|passwd|secret|secret_key|api_key|apikey|access_token|auth_token|token)$
       - pattern-not: $NAME = ""
