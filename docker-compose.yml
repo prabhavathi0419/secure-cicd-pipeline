@@ -1,0 +1,26 @@
+# Local STAGING environment.
+#   $env:APP_SECRET_KEY = "<random 32+ chars>" ; docker compose up -d
+services:
+  api:
+    image: ${APP_IMAGE:-secure-cicd-demo:local}
+    environment:
+      APP_ENV: staging
+      # `:?` makes compose refuse to start if the secret is not supplied.
+      APP_SECRET_KEY: ${APP_SECRET_KEY:?set APP_SECRET_KEY in your shell, never in this file}
+      APP_DB_PATH: /data/app.db
+    ports:
+      - "127.0.0.1:8000:8000"     # bound to localhost only, not the whole network
+    volumes:
+      - staging-data:/data
+    read_only: true               # container filesystem is immutable
+    tmpfs:
+      - /tmp
+    cap_drop: [ALL]               # drop every Linux capability
+    security_opt:
+      - no-new-privileges:true    # block setuid privilege escalation
+    pids_limit: 128
+    mem_limit: 256m
+    restart: "no"
+
+volumes:
+  staging-data:

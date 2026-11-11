@@ -1,0 +1,31 @@
+# Security gate policy - the single place thresholds live.
+# Changing this file shows up in a pull request diff and is protected by CODEOWNERS,
+# so nobody can loosen a gate silently.
+#
+# "max_allowed" = how many findings at that level are tolerated before the gate FAILS.
+# 0 means "any finding blocks the pipeline".
+
+gitleaks:            # confirmed secrets in the repo/history
+  max_allowed: 0
+
+bandit:              # Python SAST
+  block_severity: [HIGH]            # HIGH issues block
+  block_min_confidence: MEDIUM      # ...if confidence is at least this (cuts false positives)
+  report_only: [MEDIUM, LOW]        # reported, not blocking
+
+semgrep:             # multi-language SAST
+  block_severity: [ERROR]
+  report_only: [WARNING, INFO]
+
+pip_audit:           # known-vulnerable Python packages (SCA)
+  max_allowed: 0
+
+trivy_fs:            # repo files + dependency manifests
+  block_severity: [CRITICAL]
+  block_high_if_fix_available: true   # a HIGH with a published fix has no excuse
+  report_only: [HIGH, MEDIUM, LOW]
+
+trivy_image:         # final Docker image (OS packages + Python packages)
+  block_severity: [CRITICAL]
+  block_high_if_fix_available: true
+  report_only: [HIGH, MEDIUM, LOW]

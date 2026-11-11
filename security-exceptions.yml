@@ -1,0 +1,14 @@
+# Risk-based exceptions ("accepted risk"). Nothing is ever silently ignored:
+# every exception is printed in the gate summary, and an exception with a missing
+# field or a past expiry date is itself a gate FAILURE.
+#
+# Example entry (keep the list empty unless a finding is really accepted):
+#
+# - id: CVE-2099-0001            # finding ID (CVE / rule id)
+#   tool: trivy_image            # which scanner reports it
+#   package: libexample          # optional: narrow to one package
+#   justification: "Vulnerable function is never called; verified by code search."
+#   owner: platform-team         # who is accountable
+#   review_condition: "Re-evaluate when upstream ships a fix or on expiry"
+#   expires: 2027-03-01          # hard stop - exception dies on this date
+exceptions: []

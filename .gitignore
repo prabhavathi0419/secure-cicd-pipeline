@@ -1,0 +1,27 @@
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+.pytest_cache/
+.coverage
+htmlcov/
+# Secrets / local config  (NEVER commit these)
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+cosign.key
+# Local data
+*.db
+*.sqlite3
+data/
+# Generated scan output (CI uploads these as artifacts instead)
+reports/*
+!reports/.gitkeep
+# OS / editor
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/

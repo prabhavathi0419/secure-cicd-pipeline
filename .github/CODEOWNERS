@@ -1,0 +1,8 @@
+# Changes to security controls require review from the owner (enforced when
+# "Require review from Code Owners" is enabled in branch protection).
+# Replace @YOUR-GITHUB-USERNAME after creating the repository.
+/security-policy.yml      @YOUR-GITHUB-USERNAME
+/security-exceptions.yml  @YOUR-GITHUB-USERNAME
+/.github/                 @YOUR-GITHUB-USERNAME
+/scripts/security_gate.py @YOUR-GITHUB-USERNAME
+/Dockerfile               @YOUR-GITHUB-USERNAME

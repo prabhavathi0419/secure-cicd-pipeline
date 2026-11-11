@@ -1,0 +1,252 @@
+﻿name: secure-ci
+
+# ---- WHEN does this run? ----
+on:
+  push:                     # every push to any branch
+  pull_request:             # PRs (NOT pull_request_target: fork code never gets secrets/write token)
+    branches: [main]
+  workflow_dispatch:        # manual "Run workflow" button
+
+# ---- Least privilege: the default token can do NOTHING; each job opts in. ----
+permissions: {}
+
+# ---- Cancel superseded runs on the same branch (saves minutes, avoids races). ----
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.ref != 'refs/heads/main' }}
+
+env:
+  PYTHON_VERSION: "3.12"
+  IMAGE_NAME: secure-cicd-demo
+  SEMGREP_VERSION: "1.185.0"
+  # Third-party actions below are pinned to full commit SHAs (tags can be moved by attackers).
+
+jobs:
+  # ------------------------------------------------------------------ 1. unit tests
+  tests:
+    name: Unit & security tests
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false   # don't leave the token in .git/config
+      - uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+          cache: pip
+      - run: pip install -r requirements-dev.txt
+      - name: Run pytest (failure blocks the pipeline)
+        run: python -m pytest -v
+
+  # ------------------------------------------------------------------ 2. secrets
+  secrets:
+    name: Secrets detection (Gitleaks)
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0               # full history: leaked-then-deleted secrets live there
+          persist-credentials: false
+      - run: scripts/install-tools.sh gitleaks
+      - name: Scan full git history
+        run: |
+          mkdir -p reports
+          gitleaks git --config .gitleaks.toml --redact --report-format json \
+            --report-path reports/gitleaks.json --exit-code 0 .
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        if: always()
+        with:
+          name: reports-secrets
+          path: reports/
+          if-no-files-found: error
+
+  # ------------------------------------------------------------------ 3. SAST
+  sast:
+    name: SAST (Bandit + Semgrep)
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+      - run: pip install -r requirements-dev.txt "semgrep==${SEMGREP_VERSION}"
+      - name: Bandit
+        run: |
+          mkdir -p reports
+          bandit -c bandit.yaml -r . -f json -o reports/bandit.json --exit-zero
+          bandit -c bandit.yaml -r . -f txt --exit-zero | tee reports/bandit.txt
+      - name: Semgrep
+        run: |
+          semgrep scan --config p/python --config .semgrep/custom-rules.yml \
+            --metrics=off --json --output reports/semgrep.json app
+          semgrep scan --config p/python --config .semgrep/custom-rules.yml \
+            --metrics=off --text --output reports/semgrep.txt app
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        if: always()
+        with:
+          name: reports-sast
+          path: reports/
+          if-no-files-found: error
+
+  # ------------------------------------------------------------------ 4. SCA
+  sca:
+    name: SCA (pip-audit + Trivy fs)
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+      - run: pip install -r requirements-dev.txt
+      - run: scripts/install-tools.sh trivy
+      - name: pip-audit (exit 1 just means "vulns found"; the gate decides)
+        run: |
+          mkdir -p reports
+          pip-audit -r requirements.txt -f json -o reports/pip-audit.json || test -s reports/pip-audit.json
+          pip-audit -r requirements.txt -f columns > reports/pip-audit.txt || true
+      - name: Trivy filesystem scan
+        run: |
+          trivy fs --scanners vuln --format json --output reports/trivy-fs.json .
+          trivy fs --scanners vuln,misconfig --format table --output reports/trivy-fs.txt .
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        if: always()
+        with:
+          name: reports-sca
+          path: reports/
+          if-no-files-found: error
+
+  # ------------------------------------------------------------------ 5. container
+  container:
+    name: Build, scan image, SBOM
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    permissions:
+      contents: read        # no packages:write -> this job cannot push images anywhere
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - run: scripts/install-tools.sh trivy syft
+      - name: Build image (no registry push, no docker.sock mounted into anything)
+        run: docker build --pull -t "${IMAGE_NAME}:${GITHUB_SHA}" .
+      - name: Trivy image scan
+        run: |
+          mkdir -p reports
+          trivy image --format json --output reports/trivy-image.json "${IMAGE_NAME}:${GITHUB_SHA}"
+          trivy image --format table --output reports/trivy-image.txt "${IMAGE_NAME}:${GITHUB_SHA}"
+      - name: SBOM (CycloneDX) with Syft
+        run: |
+          syft "${IMAGE_NAME}:${GITHUB_SHA}" -o cyclonedx-json=reports/sbom.cdx.json -o spdx-json=reports/sbom.spdx.json
+      - name: Export image for the deploy job (same bytes that were scanned)
+        run: docker save "${IMAGE_NAME}:${GITHUB_SHA}" -o image.tar
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        if: always()
+        with:
+          name: reports-container
+          path: reports/
+          if-no-files-found: error
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: image
+          path: image.tar
+          retention-days: 1
+
+  # ------------------------------------------------------------------ 6. gate
+  gate:
+    name: Security gate
+    needs: [tests, secrets, sast, sca, container]
+    if: always()            # run even if a scan job crashed, so the failure is explicit
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+      - run: pip install PyYAML==6.0.3
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          pattern: reports-*
+          path: reports
+          merge-multiple: true
+      - name: Every upstream job must have succeeded
+        env:
+          NEEDS_JSON: ${{ toJSON(needs) }}     # passed via env, never interpolated into shell code
+        run: |
+          python - <<'PY'
+          import json, os, sys
+          needs = json.loads(os.environ["NEEDS_JSON"])
+          results = {k: v["result"] for k, v in needs.items()}
+          print("job results:", results)
+          sys.exit(0 if all(r == "success" for r in results.values()) else 1)
+          PY
+      - name: Apply security policy
+        run: python scripts/security_gate.py | tee reports/gate-summary.txt
+      - name: Publish summary
+        if: always()
+        run: |
+          { echo '### Security gate'; echo '```'; cat reports/gate-summary.txt 2>/dev/null; echo '```'; } >> "$GITHUB_STEP_SUMMARY"
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        if: always()
+        with:
+          name: security-reports-all
+          path: reports/
+
+  # ------------------------------------------------------------------ 7. deploy (staging)
+  deploy-staging:
+    name: Deploy to staging (ephemeral, on the runner)
+    needs: gate
+    # Only trusted code: pushes to main. Never pull requests, never forks.
+    if: github.event_name != 'pull_request' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    environment: staging       # add required reviewers in Settings > Environments for a manual approval
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: image
+      - name: Load the exact image that passed the gate
+        run: docker load -i image.tar
+      - name: Start staging
+        env:
+          APP_IMAGE: ${{ env.IMAGE_NAME }}:${{ github.sha }}
+        run: |
+          APP_SECRET_KEY="$(openssl rand -hex 32)"      # generated per run, never stored
+          echo "::add-mask::$APP_SECRET_KEY"
+          export APP_SECRET_KEY
+          docker compose up -d
+      - name: Verify staging
+        run: python scripts/verify_staging.py
+      - name: Tear down
+        if: always()
+        env:
+          APP_SECRET_KEY: unused-for-teardown
+        run: docker compose down -v

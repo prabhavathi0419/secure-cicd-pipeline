@@ -1,0 +1,40 @@
+rules:
+  - id: project.sql-string-formatting
+    languages: [python]
+    severity: ERROR
+    message: >
+      SQL built with string formatting/concatenation is injectable.
+      Use parameterized queries: cursor.execute("... WHERE x = ?", (value,))
+    metadata: {cwe: "CWE-89", owasp: "A03:2021 Injection"}
+    patterns:
+      - pattern-either:
+          - pattern: $CUR.execute(f"...")
+          - pattern: $CUR.execute("..." + $X)
+          - pattern: $CUR.execute("..." % $X)
+          - pattern: $CUR.execute("...".format(...))
+
+  - id: project.tls-verification-disabled
+    languages: [python]
+    severity: ERROR
+    message: TLS certificate verification must never be disabled (verify=False).
+    metadata: {cwe: "CWE-295"}
+    pattern: $F(..., verify=False, ...)
+
+  - id: project.debug-mode-enabled
+    languages: [python]
+    severity: ERROR
+    message: Debug mode must never be enabled (leaks internals, can allow code execution).
+    metadata: {cwe: "CWE-489"}
+    pattern: $F(..., debug=True, ...)
+
+  - id: project.hardcoded-secret-assignment
+    languages: [python]
+    severity: ERROR
+    message: Hard-coded secret. Load secrets from the environment, never from source code.
+    metadata: {cwe: "CWE-798"}
+    patterns:
+      - pattern: $NAME = "..."
+      - metavariable-regex:
+          metavariable: $NAME
+          regex: (?i).*(password|passwd|secret|api_key|apikey|token).*
+      - pattern-not: $NAME = ""

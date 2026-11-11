@@ -1,0 +1,15 @@
+# Gitleaks config: start from the built-in ruleset (hundreds of provider key patterns)
+# and add nothing that hides real findings.
+title = "secure-cicd-pipeline gitleaks config"
+
+[extend]
+useDefault = true
+
+# Allowlist is deliberately tiny and documented. The .env.example file holds
+# only obviously-empty placeholders, so it may be committed.
+[allowlist]
+description = "Documented, minimal allowlist"
+paths = [
+  '''\.env\.example$''',
+  '''(^|/)\.venv/''',   # local virtualenv = third-party code, not our repo (git-ignored)
+]

@@ -1,0 +1,3 @@
+# Bandit scans application code only. Tests legitimately use `assert` (B101)
+# and throwaway test secrets, so they are excluded from the production-code scan.
+exclude_dirs: ["tests", ".venv", "fixtures", "scripts"]
