@@ -1,8 +1,8 @@
 # Changes to security controls require review from the owner (enforced when
 # "Require review from Code Owners" is enabled in branch protection).
-# Owner: @prabha0419
-/security-policy.yml      @prabha0419
-/security-exceptions.yml  @prabha0419
-/.github/                 @prabha0419
-/scripts/security_gate.py @prabha0419
-/Dockerfile               @prabha0419
+# Owner: @prabhavathi0419
+/security-policy.yml      @prabhavathi0419
+/security-exceptions.yml  @prabhavathi0419
+/.github/                 @prabhavathi0419
+/scripts/security_gate.py @prabhavathi0419
+/Dockerfile               @prabhavathi0419
